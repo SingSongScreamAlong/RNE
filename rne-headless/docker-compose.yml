@@ -1,0 +1,35 @@
+# =====================================================================
+# RNE Headless Service - Docker Compose
+# =====================================================================
+
+version: '3.8'
+
+services:
+  rne-headless:
+    build: .
+    container_name: rne-headless
+    restart: unless-stopped
+    environment:
+      - BRAIN_ENDPOINT=${BRAIN_ENDPOINT:-https://coral-app-x988a.ondigitalocean.app}
+      - BRAIN_API_KEY=${BRAIN_API_KEY:-dev-watcher-key}
+      - MAX_STREAMS=${MAX_STREAMS:-2}
+      - ROTATION_MINUTES=${ROTATION_MINUTES:-20}
+      - CAPTURE_FPS=${CAPTURE_FPS:-1}
+      - HEADLESS=true
+      - LOG_LEVEL=info
+    ports:
+      - "8080:8080"
+    # Resource limits for DigitalOcean
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 2G
+    # Security
+    security_opt:
+      - no-new-privileges:true
+    # Shared memory for Chrome
+    shm_size: 1gb

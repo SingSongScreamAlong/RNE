@@ -1,7 +1,7 @@
 {
   "name": "watcher-agent",
   "version": "1.0.0",
-  "description": "RNE Watcher Agent - Autonomous YouTube monitoring for Brain server",
+  "description": "RNE Watcher Agent - Autonomous racing content monitoring for AI learning (F1, IMSA, WEC, NASCAR, simracing, and more)",
   "main": "dist/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
@@ -12,15 +12,14 @@
   "dependencies": {
     "bufferutil": "^4.0.9",
     "electron-store": "^8.1.0",
+    "socket.io-client": "^4.7.2",
     "systeminformation": "^5.21.0",
     "utf-8-validate": "^6.0.5",
-    "uuid": "^9.0.0",
-    "ws": "^8.14.2"
+    "uuid": "^9.0.0"
   },
   "devDependencies": {
     "@types/node": "^20.9.0",
     "@types/uuid": "^9.0.6",
-    "@types/ws": "^8.5.9",
     "electron": "^27.1.0",
     "electron-builder": "^24.6.4",
     "electron-vite": "^1.0.29",

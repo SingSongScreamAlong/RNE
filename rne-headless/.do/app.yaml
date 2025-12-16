@@ -1,0 +1,47 @@
+# DigitalOcean App Platform Specification
+# Deploy with: doctl apps create --spec .do/app.yaml
+
+name: rne-headless
+region: nyc
+
+services:
+  - name: rne-headless
+    dockerfile_path: Dockerfile
+    source_dir: /
+    github:
+      repo: SingSongScreamAlong/sog-kneeboard
+      branch: main
+      deploy_on_push: true
+    
+    # $24/month = Professional-S (4GB RAM, 2 vCPUs)
+    instance_size_slug: professional-s
+    instance_count: 1
+    
+    http_port: 8080
+    
+    health_check:
+      http_path: /health
+      initial_delay_seconds: 60
+      period_seconds: 30
+      timeout_seconds: 10
+      success_threshold: 1
+      failure_threshold: 3
+    
+    envs:
+      - key: BRAIN_ENDPOINT
+        value: "https://coral-app-x988a.ondigitalocean.app"
+      - key: BRAIN_API_KEY
+        type: SECRET
+        value: "dev-watcher-key"
+      - key: MAX_STREAMS
+        value: "3"
+      - key: ROTATION_MINUTES
+        value: "20"
+      - key: CAPTURE_FPS
+        value: "1"
+      - key: HEADLESS
+        value: "true"
+      - key: LOG_LEVEL
+        value: "info"
+      - key: HEALTH_PORT
+        value: "8080"

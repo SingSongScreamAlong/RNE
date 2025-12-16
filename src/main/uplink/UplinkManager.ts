@@ -1,20 +1,47 @@
 import { EventEmitter } from 'events';
-import WebSocket from 'ws';
+import { io, Socket } from 'socket.io-client';
 import { WatcherConfig } from '../../shared/types/config';
 import { Observation } from '../../shared/types/observations';
 import { Logger } from '../utils/Logger';
 
 const logger = new Logger('UplinkManager');
 
+/**
+ * Authentication message sent to Brain server
+ */
+interface WatcherAuthMessage {
+  agentType: 'watcher';
+  apiKey: string;
+  agentId?: string;
+  version: string;
+}
+
+/**
+ * Observation batch with stream context
+ */
+interface ObservationBatch {
+  agentId: string;
+  batchId: string;
+  observations: Observation[];
+  streamInfo: {
+    streamId: string;
+    videoId: string;
+    videoTitle: string;
+    sourceType: 'video' | 'playlist' | 'channel';
+    sourceUrl: string;
+  };
+}
+
 export class UplinkManager extends EventEmitter {
   private config: WatcherConfig;
-  private ws: WebSocket | null = null;
+  private socket: Socket | null = null;
   private connected = false;
   private authenticated = false;
+  private agentId: string = '';
   private reconnectAttempts = 0;
-  private reconnectTimeout: NodeJS.Timeout | null = null;
   private observationQueue: Observation[] = [];
   private batchTimeout: NodeJS.Timeout | null = null;
+  private currentStreamInfo: ObservationBatch['streamInfo'] | null = null;
 
   constructor(config: WatcherConfig) {
     super();
@@ -26,108 +53,93 @@ export class UplinkManager extends EventEmitter {
       const endpoint = this.config.brain.endpoint;
       logger.info(`Connecting to Brain: ${endpoint}`);
 
-      this.ws = new WebSocket(endpoint);
+      // Socket.IO automatically handles reconnection
+      this.socket = io(endpoint, {
+        transports: ['websocket'],
+        reconnection: true,
+        reconnectionAttempts: this.config.brain.max_reconnect_attempts,
+        reconnectionDelay: this.config.brain.reconnect_interval_ms,
+        timeout: 10000,
+      });
 
-      this.ws.on('open', () => {
-        logger.info('WebSocket connected');
+      this.socket.on('connect', () => {
+        logger.info('Socket.IO connected');
         this.connected = true;
         this.reconnectAttempts = 0;
         this.authenticate();
       });
 
-      this.ws.on('message', (data: WebSocket.Data) => {
-        this.handleMessage(data);
-        if (this.authenticated) {
-          resolve();
-        }
+      this.socket.on('watcher:auth_success', (data: { agentId: string; sessionToken: string }) => {
+        logger.info(`Authenticated successfully as ${data.agentId}`);
+        this.authenticated = true;
+        this.agentId = data.agentId;
+        this.emit('authenticated');
+        resolve();
       });
 
-      this.ws.on('close', () => {
+      this.socket.on('watcher:auth_error', (error: { error: string; code: string }) => {
+        logger.error(`Authentication failed: ${error.error} (${error.code})`);
+        this.emit('auth_error', error);
+        reject(new Error(error.error));
+      });
+
+      this.socket.on('watcher:observations_ack', (ack: { batchId: string; received: number }) => {
+        logger.debug(`Observations acknowledged: batch ${ack.batchId}, ${ack.received} received`);
+      });
+
+      this.socket.on('watcher:observations_error', (error: { batchId: string; error: string }) => {
+        logger.error(`Observation error: batch ${error.batchId} - ${error.error}`);
+      });
+
+      this.socket.on('watcher:command', (command: { commandId: string; type: string; payload?: unknown }) => {
+        logger.info(`Received command: ${command.type}`);
+        this.emit('command', command);
+      });
+
+      this.socket.on('disconnect', (reason) => {
         this.connected = false;
         this.authenticated = false;
-        logger.info('WebSocket disconnected');
-        this.scheduleReconnect();
+        logger.info(`Disconnected: ${reason}`);
+        this.emit('disconnected', reason);
       });
 
-      this.ws.on('error', (error) => {
-        logger.error('WebSocket error:', error);
-        if (!this.connected) {
-          reject(error);
+      this.socket.on('connect_error', (error) => {
+        logger.error('Connection error:', error.message);
+        this.reconnectAttempts++;
+
+        if (this.reconnectAttempts >= this.config.brain.max_reconnect_attempts) {
+          logger.error('Max reconnection attempts reached');
+          reject(new Error('Failed to connect after max attempts'));
         }
       });
 
       // Timeout for initial connection
       setTimeout(() => {
         if (!this.authenticated) {
-          // Auto-resolve even if not authenticated for testing
-          logger.warn('Authentication timeout, continuing anyway');
+          logger.warn('Authentication timeout, resolving anyway for testing');
           this.authenticated = true;
+          this.agentId = `watcher-${Date.now()}`;
           resolve();
         }
-      }, 5000);
+      }, 10000);
     });
   }
 
   private authenticate(): void {
-    if (!this.ws) return;
+    if (!this.socket) return;
 
-    const authMessage = {
-      type: 'auth',
-      payload: {
-        agent_type: 'watcher',
-        api_key: this.config.brain.api_key,
-        version: '1.0.0',
-      },
+    const authMessage: WatcherAuthMessage = {
+      agentType: 'watcher',
+      apiKey: this.config.brain.api_key,
+      version: '1.0.0',
     };
 
-    this.ws.send(JSON.stringify(authMessage));
+    logger.info('Sending authentication...');
+    this.socket.emit('watcher:auth', authMessage);
   }
 
-  private handleMessage(data: WebSocket.Data): void {
-    try {
-      const message = JSON.parse(data.toString());
-
-      switch (message.type) {
-        case 'auth_success':
-          logger.info('Authenticated successfully');
-          this.authenticated = true;
-          this.emit('authenticated');
-          break;
-
-        case 'auth_error':
-          logger.error('Authentication failed:', message.error);
-          this.emit('auth_error', message.error);
-          break;
-
-        case 'command':
-          this.emit('command', message.payload);
-          break;
-
-        default:
-          logger.debug('Unknown message type:', message.type);
-      }
-    } catch (error) {
-      logger.error('Failed to parse message:', error);
-    }
-  }
-
-  private scheduleReconnect(): void {
-    if (this.reconnectAttempts >= this.config.brain.max_reconnect_attempts) {
-      logger.error('Max reconnection attempts reached');
-      this.emit('disconnected');
-      return;
-    }
-
-    this.reconnectAttempts++;
-    const delay = this.config.brain.reconnect_interval_ms * this.reconnectAttempts;
-
-    logger.info(`Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`);
-
-    this.reconnectTimeout = setTimeout(() => {
-      this.connect().catch((error) => {
-        logger.error('Reconnection failed:', error);
-      });
-    }, delay);
+  setStreamInfo(info: ObservationBatch['streamInfo']): void {
+    this.currentStreamInfo = info;
   }
 
   async sendObservation(observation: Observation): Promise<void> {
@@ -152,39 +164,63 @@ export class UplinkManager extends EventEmitter {
 
     if (this.observationQueue.length === 0) return;
 
-    if (!this.ws || !this.connected) {
+    if (!this.socket || !this.connected) {
       logger.warn('Not connected, queuing observations');
       return;
     }
 
     const batch = this.observationQueue.splice(0, this.config.brain.batch_max_size);
 
-    const message = {
-      type: 'observations',
-      payload: batch,
+    const message: ObservationBatch = {
+      agentId: this.agentId,
+      batchId: `batch-${Date.now()}`,
+      observations: batch,
+      streamInfo: this.currentStreamInfo || {
+        streamId: batch[0]?.stream_id || 'unknown',
+        videoId: '',
+        videoTitle: 'Unknown',
+        sourceType: 'video',
+        sourceUrl: '',
+      },
     };
 
     try {
-      this.ws.send(JSON.stringify(message));
-      logger.debug(`Sent ${batch.length} observations`);
+      this.socket.emit('watcher:observations', message);
+      logger.debug(`Sent batch ${message.batchId} with ${batch.length} observations`);
     } catch (error) {
       logger.error('Failed to send observations:', error);
+      // Put observations back in queue
       this.observationQueue.unshift(...batch);
     }
   }
 
-  async disconnect(): Promise<void> {
-    if (this.reconnectTimeout) {
-      clearTimeout(this.reconnectTimeout);
-    }
+  sendStatus(status: {
+    state: string;
+    activeStreams: number;
+    totalFramesCaptured: number;
+    totalObservationsSent: number;
+    errorsCount: number;
+    uptime: number;
+  }): void {
+    if (!this.socket || !this.connected) return;
 
+    this.socket.emit('watcher:status', {
+      agentId: this.agentId,
+      ...status,
+    });
+  }
+
+  async disconnect(): Promise<void> {
     if (this.batchTimeout) {
       clearTimeout(this.batchTimeout);
     }
 
-    if (this.ws) {
-      this.ws.close();
-      this.ws = null;
+    // Flush any remaining observations
+    this.flushObservations();
+
+    if (this.socket) {
+      this.socket.disconnect();
+      this.socket = null;
     }
 
     this.connected = false;

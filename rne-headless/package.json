@@ -1,0 +1,25 @@
+{
+    "name": "rne-headless",
+    "version": "1.0.0",
+    "description": "RNE Headless Service - 24/7 racing content ingestion for AI learning",
+    "main": "dist/index.js",
+    "type": "module",
+    "scripts": {
+        "dev": "tsx watch src/index.ts",
+        "build": "tsc",
+        "start": "node dist/index.js",
+        "docker:build": "docker build -t rne-headless .",
+        "docker:run": "docker run --rm -e BRAIN_ENDPOINT -e BRAIN_API_KEY rne-headless"
+    },
+    "dependencies": {
+        "puppeteer": "^21.6.0",
+        "socket.io-client": "^4.7.2",
+        "uuid": "^9.0.0"
+    },
+    "devDependencies": {
+        "@types/node": "^20.9.0",
+        "@types/uuid": "^9.0.6",
+        "tsx": "^4.6.0",
+        "typescript": "^5.2.2"
+    }
+}

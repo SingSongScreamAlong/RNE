@@ -6,8 +6,9 @@ const logger = new Logger('ConfigManager');
 
 const defaultConfig: WatcherConfig = {
   brain: {
-    endpoint: process.env.BRAIN_WS_ENDPOINT || 'wss://coral-app-x988a.ondigitalocean.app/ws',
-    api_key: process.env.BRAIN_API_KEY || '',
+    // Socket.IO endpoint (no /ws path needed - Socket.IO handles it)
+    endpoint: process.env.BRAIN_ENDPOINT || 'https://coral-app-x988a.ondigitalocean.app',
+    api_key: process.env.BRAIN_API_KEY || 'dev-watcher-key',
     reconnect_interval_ms: 5000,
     max_reconnect_attempts: 10,
     batch_interval_ms: 1000,
@@ -21,30 +22,99 @@ const defaultConfig: WatcherConfig = {
   },
   streams: {
     sources: [
+      // === Formula 1 ===
       {
-        name: 'F1 Official Highlights',
+        name: 'F1 Official Channel',
+        url: 'https://www.youtube.com/@Formula1/videos',
+        type: 'channel',
+        priority: 1,
+      },
+      {
+        name: 'F1 Race Highlights',
         url: 'https://www.youtube.com/playlist?list=PLfoNZDHitwjUv0pjTwlV1vzaE0r7UDVDR',
         type: 'playlist',
         priority: 1,
       },
+      // === IMSA / SportsCar Racing ===
       {
-        name: 'F1 Channel',
-        url: 'https://www.youtube.com/@Formula1/videos',
+        name: 'IMSA Official',
+        url: 'https://www.youtube.com/@ABORAD/videos',
+        type: 'channel',
+        priority: 2,
+      },
+      // === WEC / Endurance ===
+      {
+        name: 'FIA WEC',
+        url: 'https://www.youtube.com/@FIAWEC/videos',
         type: 'channel',
         priority: 2,
       },
       {
-        name: 'F1 Race Replay',
-        url: 'https://www.youtube.com/watch?v=2X5Lwa4rVtY',
-        type: 'video',
+        name: '24 Hours of Le Mans',
+        url: 'https://www.youtube.com/@24hoursoflemans/videos',
+        type: 'channel',
+        priority: 2,
+      },
+      // === NASCAR / Oval ===
+      {
+        name: 'NASCAR Official',
+        url: 'https://www.youtube.com/@NASCAR/videos',
+        type: 'channel',
+        priority: 3,
+      },
+      // === IndyCar ===
+      {
+        name: 'IndyCar Official',
+        url: 'https://www.youtube.com/@INDYCAR/videos',
+        type: 'channel',
+        priority: 3,
+      },
+      // === Simracing ===
+      {
+        name: 'iRacing Official',
+        url: 'https://www.youtube.com/@iRacing/videos',
+        type: 'channel',
+        priority: 4,
+      },
+      {
+        name: 'ACC Esports',
+        url: 'https://www.youtube.com/@ACCompetizione/videos',
+        type: 'channel',
+        priority: 4,
+      },
+      {
+        name: 'SimRacing Highlights',
+        url: 'https://www.youtube.com/@TheSimGrid/videos',
+        type: 'channel',
+        priority: 4,
+      },
+      // === GT / Touring Cars ===
+      {
+        name: 'GT World Challenge',
+        url: 'https://www.youtube.com/@GTWorld/videos',
+        type: 'channel',
+        priority: 3,
+      },
+      // === Rally / Dirt ===
+      {
+        name: 'WRC Official',
+        url: 'https://www.youtube.com/@WRC/videos',
+        type: 'channel',
+        priority: 3,
+      },
+      // === Formula E ===
+      {
+        name: 'Formula E',
+        url: 'https://www.youtube.com/@FIAFormulaE/videos',
+        type: 'channel',
         priority: 3,
       },
     ],
     max_concurrent: 1,
     rotation: {
       enabled: true,
-      interval_minutes: 30,
-      mode: 'sequential',
+      interval_minutes: 20, // Rotate every 20 minutes
+      mode: 'priority', // Watch higher priority sources more often
     },
   },
   capture: {
@@ -103,7 +173,24 @@ export class ConfigManager {
   load(): WatcherConfig {
     try {
       this.config = { ...defaultConfig, ...this.store.store };
+
+      // Always prefer environment variables for brain connection at runtime
+      if (process.env.BRAIN_ENDPOINT) {
+        this.config.brain.endpoint = process.env.BRAIN_ENDPOINT;
+        logger.info(`Using BRAIN_ENDPOINT from environment: ${this.config.brain.endpoint}`);
+      }
+      if (process.env.BRAIN_API_KEY) {
+        this.config.brain.api_key = process.env.BRAIN_API_KEY;
+      }
+
+      // Ensure API key is never empty (fallback to default if stored value is empty)
+      if (!this.config.brain.api_key) {
+        this.config.brain.api_key = 'dev-watcher-key';
+        logger.info('Using default API key');
+      }
+
       logger.info('Configuration loaded successfully');
+      logger.info(`Brain endpoint: ${this.config.brain.endpoint}`);
       logger.info(`Sources configured: ${this.config.streams.sources.length}`);
       logger.info(`Schedule enabled: ${this.config.schedule.enabled}`);
       return this.config;
