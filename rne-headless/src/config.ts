@@ -33,6 +33,13 @@ export interface Config {
         fps: number;
         quality: number;
     };
+    ai: {
+        enabled: boolean;
+        openaiApiKey: string;
+        model: string;
+        analyzeEveryNthFrame: number;
+        maxTokens: number;
+    };
     server: {
         healthPort: number;
     };
@@ -94,6 +101,13 @@ export function loadConfig(): Config {
         capture: {
             fps: parseFloat(process.env.CAPTURE_FPS || '1'),
             quality: 80,
+        },
+        ai: {
+            enabled: !!process.env.OPENAI_API_KEY,
+            openaiApiKey: process.env.OPENAI_API_KEY || '',
+            model: process.env.AI_MODEL || 'gpt-5',
+            analyzeEveryNthFrame: parseInt(process.env.AI_ANALYZE_EVERY_N || '10', 10), // Analyze every 10th frame
+            maxTokens: parseInt(process.env.AI_MAX_TOKENS || '1000', 10),
         },
         server: {
             healthPort: parseInt(process.env.HEALTH_PORT || '8080', 10),

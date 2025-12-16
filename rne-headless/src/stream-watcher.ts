@@ -6,6 +6,7 @@ import puppeteer, { Browser, Page } from 'puppeteer';
 import { v4 as uuidv4 } from 'uuid';
 import { Config, Source } from './config.js';
 import { UplinkManager, Observation } from './uplink.js';
+import { AIAnalyzer } from './ai-analyzer.js';
 import { createLogger } from './logger.js';
 
 const logger = createLogger('StreamWatcher');
@@ -18,6 +19,7 @@ export interface StreamStats {
     currentTime: number;
     duration: number;
     framesCaptured: number;
+    framesAnalyzed: number;
     startedAt: Date;
     state: 'starting' | 'playing' | 'buffering' | 'error' | 'stopped';
 }
@@ -25,6 +27,7 @@ export interface StreamStats {
 export class StreamWatcher {
     private config: Config;
     private uplink: UplinkManager;
+    private aiAnalyzer: AIAnalyzer | null;
     private source: Source;
     private browser: Browser | null = null;
     private page: Page | null = null;
@@ -34,10 +37,11 @@ export class StreamWatcher {
     private popupInterval: NodeJS.Timeout | null = null;
     private running = false;
 
-    constructor(config: Config, uplink: UplinkManager, source: Source) {
+    constructor(config: Config, uplink: UplinkManager, source: Source, aiAnalyzer: AIAnalyzer | null = null) {
         this.config = config;
         this.uplink = uplink;
         this.source = source;
+        this.aiAnalyzer = aiAnalyzer;
         this.streamId = uuidv4();
         this.stats = {
             streamId: this.streamId,
@@ -47,6 +51,7 @@ export class StreamWatcher {
             currentTime: 0,
             duration: 0,
             framesCaptured: 0,
+            framesAnalyzed: 0,
             startedAt: new Date(),
             state: 'starting',
         };
@@ -235,6 +240,34 @@ export class StreamWatcher {
 
                 this.uplink.setCurrentSource(this.source);
                 this.uplink.sendObservation(observation);
+
+                // AI Analysis - capture screenshot and analyze
+                if (this.aiAnalyzer && this.config.ai.enabled) {
+                    try {
+                        // Capture screenshot as base64
+                        const screenshot = await this.page.screenshot({
+                            encoding: 'base64',
+                            type: 'jpeg',
+                            quality: this.config.capture.quality,
+                        });
+
+                        // Send to AI for analysis
+                        const analysis = await this.aiAnalyzer.analyzeFrame(
+                            screenshot as string,
+                            state.videoId,
+                            state.title,
+                            this.source.category,
+                            state.currentTime
+                        );
+
+                        if (analysis) {
+                            this.stats.framesAnalyzed++;
+                            logger.debug(`🧠 AI: ${analysis.insights.length} insights from ${state.title}`);
+                        }
+                    } catch (aiError) {
+                        logger.warn(`AI analysis error: ${aiError}`);
+                    }
+                }
 
             } catch (error) {
                 logger.error(`Capture error: ${error}`);

@@ -5,6 +5,8 @@
 import { Config, Source } from './config.js';
 import { UplinkManager } from './uplink.js';
 import { StreamWatcher, StreamStats } from './stream-watcher.js';
+import { AIAnalyzer } from './ai-analyzer.js';
+import { KnowledgeStore } from './knowledge-store.js';
 import { createLogger } from './logger.js';
 
 const logger = createLogger('Engine');
@@ -12,6 +14,8 @@ const logger = createLogger('Engine');
 export class WatcherEngine {
     private config: Config;
     private uplink: UplinkManager;
+    private aiAnalyzer: AIAnalyzer | null = null;
+    private knowledgeStore: KnowledgeStore | null = null;
     private streams: Map<string, StreamWatcher> = new Map();
     private sourceQueue: Source[] = [];
     private currentSourceIndex = 0;
@@ -19,6 +23,7 @@ export class WatcherEngine {
     private statusTimer: NodeJS.Timeout | null = null;
     private running = false;
     private totalFramesCaptured = 0;
+    private totalFramesAnalyzed = 0;
 
     constructor(config: Config) {
         this.config = config;
@@ -32,9 +37,38 @@ export class WatcherEngine {
         logger.info(`Initialized queue with ${this.sourceQueue.length} sources`);
     }
 
+    private async initAI(): Promise<void> {
+        if (!this.config.ai.enabled) {
+            logger.info('AI analysis disabled (no OPENAI_API_KEY)');
+            return;
+        }
+
+        logger.info('🧠 Initializing AI Analysis Engine...');
+
+        // Initialize knowledge store
+        this.knowledgeStore = new KnowledgeStore('/app/data');
+        await this.knowledgeStore.initialize();
+
+        // Initialize AI analyzer
+        this.aiAnalyzer = new AIAnalyzer(
+            {
+                openaiApiKey: this.config.ai.openaiApiKey,
+                model: this.config.ai.model,
+                analyzeEveryNthFrame: this.config.ai.analyzeEveryNthFrame,
+                maxTokens: this.config.ai.maxTokens,
+            },
+            this.knowledgeStore
+        );
+
+        logger.info(`🧠 AI Engine ready: ${this.config.ai.model}, analyzing every ${this.config.ai.analyzeEveryNthFrame} frames`);
+    }
+
     async start(): Promise<void> {
         logger.info('🚀 Starting Watcher Engine...');
         this.running = true;
+
+        // Initialize AI if enabled
+        await this.initAI();
 
         // Connect to ControlBox
         await this.uplink.connect();
@@ -54,6 +88,9 @@ export class WatcherEngine {
         this.statusTimer = setInterval(() => this.reportStatus(), 30000);
 
         logger.info(`✅ Engine started with ${this.streams.size} streams`);
+        if (this.aiAnalyzer) {
+            logger.info(`🧠 AI Analysis: ACTIVE (${this.config.ai.model})`);
+        }
     }
 
     private getNextSource(): Source {
@@ -64,7 +101,7 @@ export class WatcherEngine {
 
     private async startStream(source: Source): Promise<void> {
         try {
-            const watcher = new StreamWatcher(this.config, this.uplink, source);
+            const watcher = new StreamWatcher(this.config, this.uplink, source, this.aiAnalyzer);
             await watcher.start();
             this.streams.set(watcher.getStats().streamId, watcher);
             logger.info(`Started stream for: ${source.name} (${source.category})`);
@@ -87,6 +124,13 @@ export class WatcherEngine {
         if (oldestStream) {
             const stats = oldestStream.getStats();
             this.totalFramesCaptured += stats.framesCaptured;
+            this.totalFramesAnalyzed += stats.framesAnalyzed;
+
+            // Update watch time in knowledge store
+            if (this.knowledgeStore) {
+                const hoursWatched = stats.currentTime / 3600;
+                this.knowledgeStore.updateWatchTime(stats.source.category, hoursWatched);
+            }
 
             await oldestStream.stop();
             this.streams.delete(oldestId);
@@ -103,8 +147,11 @@ export class WatcherEngine {
         if (!this.uplink.isConnected()) return;
 
         let totalFrames = this.totalFramesCaptured;
+        let aiFrames = this.totalFramesAnalyzed;
         for (const stream of this.streams.values()) {
-            totalFrames += stream.getStats().framesCaptured;
+            const stats = stream.getStats();
+            totalFrames += stats.framesCaptured;
+            aiFrames += stats.framesAnalyzed;
         }
 
         this.uplink.sendStatus({
@@ -113,6 +160,12 @@ export class WatcherEngine {
             totalFramesCaptured: totalFrames,
             totalObservationsSent: totalFrames,
         });
+
+        // Log AI stats periodically
+        if (this.aiAnalyzer) {
+            const aiStats = this.aiAnalyzer.getStats();
+            logger.info(`🧠 AI: ${aiFrames} frames analyzed, ~$${aiStats.estimatedCost} cost`);
+        }
     }
 
     async stop(): Promise<void> {
@@ -134,16 +187,23 @@ export class WatcherEngine {
         await Promise.all(stopPromises);
         this.streams.clear();
 
+        // Save knowledge base
+        if (this.knowledgeStore) {
+            await this.knowledgeStore.shutdown();
+        }
+
         // Disconnect uplink
         await this.uplink.disconnect();
 
         logger.info('✅ Engine stopped');
     }
 
-    getStats(): { streams: StreamStats[]; totalFrames: number } {
+    getStats(): { streams: StreamStats[]; totalFrames: number; totalAnalyzed: number; knowledge: object | null } {
         return {
             streams: Array.from(this.streams.values()).map(s => s.getStats()),
             totalFrames: this.totalFramesCaptured,
+            totalAnalyzed: this.totalFramesAnalyzed,
+            knowledge: this.knowledgeStore?.getStats() || null,
         };
     }
 }
