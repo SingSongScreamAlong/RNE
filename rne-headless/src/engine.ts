@@ -5,8 +5,10 @@
 import { Config, Source } from './config.js';
 import { UplinkManager } from './uplink.js';
 import { StreamWatcher, StreamStats } from './stream-watcher.js';
-import { AIAnalyzer } from './ai-analyzer.js';
+import { AIAnalyzer, VisionConfig } from './ai-analyzer.js';
 import { KnowledgeStore } from './knowledge-store.js';
+import { ReasoningEngine } from './reasoning-engine.js';
+import { ReportScheduler } from './report-scheduler.js';
 import { createLogger } from './logger.js';
 
 const logger = createLogger('Engine');
@@ -14,8 +16,10 @@ const logger = createLogger('Engine');
 export class WatcherEngine {
     private config: Config;
     private uplink: UplinkManager;
-    private aiAnalyzer: AIAnalyzer | null = null;
+    private visionEngine: AIAnalyzer | null = null;
+    private reasoningEngine: ReasoningEngine | null = null;
     private knowledgeStore: KnowledgeStore | null = null;
+    private reportScheduler: ReportScheduler | null = null;
     private streams: Map<string, StreamWatcher> = new Map();
     private sourceQueue: Source[] = [];
     private currentSourceIndex = 0;
@@ -38,38 +42,64 @@ export class WatcherEngine {
     }
 
     private async initAI(): Promise<void> {
-        if (!this.config.ai.enabled) {
-            logger.info('AI analysis disabled (no GOOGLE_API_KEY or OPENAI_API_KEY)');
-            return;
-        }
-
-        logger.info('🧠 Initializing AI Analysis Engine...');
-
-        // Initialize knowledge store
+        // Initialize knowledge store (shared by both engines)
         this.knowledgeStore = new KnowledgeStore('/app/data');
         await this.knowledgeStore.initialize();
 
-        // Initialize AI analyzer
-        this.aiAnalyzer = new AIAnalyzer(
-            {
-                provider: this.config.ai.provider,
-                googleApiKey: this.config.ai.googleApiKey,
-                openaiApiKey: this.config.ai.openaiApiKey,
-                model: this.config.ai.model,
-                analyzeEveryNthFrame: this.config.ai.analyzeEveryNthFrame,
-                maxTokens: this.config.ai.maxTokens,
-            },
-            this.knowledgeStore
-        );
+        // Initialize Vision Engine (Gemini - high volume perception)
+        if (this.config.vision.enabled) {
+            logger.info('👁️ Initializing Vision Engine (Gemini)...');
 
-        logger.info(`🧠 AI Engine ready: ${this.config.ai.provider}/${this.config.ai.model}, analyzing every ${this.config.ai.analyzeEveryNthFrame} frames`);
+            const visionConfig: VisionConfig = {
+                googleApiKey: this.config.vision.googleApiKey,
+                model: this.config.vision.model,
+                analyzeEveryNthFrame: this.config.vision.analyzeEveryNthFrame,
+            };
+
+            this.visionEngine = new AIAnalyzer(visionConfig, this.knowledgeStore);
+            logger.info(`👁️ Vision: ${this.config.vision.model}, every ${this.config.vision.analyzeEveryNthFrame} frames`);
+        } else {
+            logger.info('👁️ Vision Engine disabled (no GOOGLE_API_KEY)');
+        }
+
+        // Initialize Reasoning Engine (GPT-5 - low volume deep thinking)
+        if (this.config.reasoning.enabled) {
+            logger.info('🧠 Initializing Reasoning Engine (GPT-5)...');
+
+            this.reasoningEngine = new ReasoningEngine(
+                {
+                    openaiApiKey: this.config.reasoning.openaiApiKey,
+                    model: this.config.reasoning.model,
+                    maxTokens: this.config.reasoning.maxTokens,
+                },
+                this.knowledgeStore
+            );
+            logger.info(`🧠 Reasoning: ${this.config.reasoning.model}`);
+
+            // Initialize Report Scheduler if enabled
+            if (this.config.reporting.enabled) {
+                this.reportScheduler = new ReportScheduler(
+                    {
+                        reportTimes: this.config.reporting.times,
+                        timezone: this.config.reporting.timezone,
+                        discordWebhook: this.config.reporting.discordWebhook,
+                    },
+                    this.reasoningEngine,
+                    this.knowledgeStore
+                );
+                this.reportScheduler.start();
+                logger.info(`📊 Reports: ${this.config.reporting.times.join(', ')} ${this.config.reporting.timezone}`);
+            }
+        } else {
+            logger.info('🧠 Reasoning Engine disabled (no OPENAI_API_KEY)');
+        }
     }
 
     async start(): Promise<void> {
         logger.info('🚀 Starting Watcher Engine...');
         this.running = true;
 
-        // Initialize AI if enabled
+        // Initialize AI engines
         await this.initAI();
 
         // Connect to ControlBox
@@ -90,8 +120,13 @@ export class WatcherEngine {
         this.statusTimer = setInterval(() => this.reportStatus(), 30000);
 
         logger.info(`✅ Engine started with ${this.streams.size} streams`);
-        if (this.aiAnalyzer) {
-            logger.info(`🧠 AI Analysis: ACTIVE (${this.config.ai.model})`);
+
+        // Log AI status
+        if (this.visionEngine) {
+            logger.info(`👁️ Vision: ACTIVE (Gemini ${this.config.vision.model})`);
+        }
+        if (this.reasoningEngine) {
+            logger.info(`🧠 Reasoning: ACTIVE (GPT ${this.config.reasoning.model})`);
         }
     }
 
@@ -103,7 +138,7 @@ export class WatcherEngine {
 
     private async startStream(source: Source): Promise<void> {
         try {
-            const watcher = new StreamWatcher(this.config, this.uplink, source, this.aiAnalyzer);
+            const watcher = new StreamWatcher(this.config, this.uplink, source, this.visionEngine);
             await watcher.start();
             this.streams.set(watcher.getStats().streamId, watcher);
             logger.info(`Started stream for: ${source.name} (${source.category})`);
@@ -164,9 +199,9 @@ export class WatcherEngine {
         });
 
         // Log AI stats periodically
-        if (this.aiAnalyzer) {
-            const aiStats = this.aiAnalyzer.getStats();
-            logger.info(`🧠 AI: ${aiFrames} frames analyzed, ~$${aiStats.estimatedCost} cost`);
+        if (this.visionEngine) {
+            const visionStats = this.visionEngine.getStats();
+            logger.info(`👁️ Vision: ${aiFrames} frames, ~$${visionStats.estimatedCost}`);
         }
     }
 
@@ -182,6 +217,11 @@ export class WatcherEngine {
         if (this.statusTimer) {
             clearInterval(this.statusTimer);
             this.statusTimer = null;
+        }
+
+        // Stop report scheduler
+        if (this.reportScheduler) {
+            this.reportScheduler.stop();
         }
 
         // Stop all streams

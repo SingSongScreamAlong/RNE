@@ -242,7 +242,7 @@ export class StreamWatcher {
                 this.uplink.sendObservation(observation);
 
                 // AI Analysis - capture screenshot and analyze
-                if (this.aiAnalyzer && this.config.ai.enabled) {
+                if (this.aiAnalyzer && this.config.vision.enabled) {
                     try {
                         // Capture screenshot as base64
                         const screenshot = await this.page.screenshot({

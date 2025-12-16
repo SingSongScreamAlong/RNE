@@ -33,14 +33,26 @@ export interface Config {
         fps: number;
         quality: number;
     };
-    ai: {
+    // Vision AI (Gemini - high volume, perception)
+    vision: {
         enabled: boolean;
-        provider: 'gemini' | 'openai';
         googleApiKey: string;
-        openaiApiKey: string;
         model: string;
         analyzeEveryNthFrame: number;
+    };
+    // Reasoning AI (GPT-5 - low volume, deep thinking)
+    reasoning: {
+        enabled: boolean;
+        openaiApiKey: string;
+        model: string;
         maxTokens: number;
+    };
+    // Scheduled reports
+    reporting: {
+        enabled: boolean;
+        times: string[]; // ['0600', '2000']
+        timezone: string;
+        discordWebhook: string;
     };
     server: {
         healthPort: number;
@@ -104,14 +116,26 @@ export function loadConfig(): Config {
             fps: parseFloat(process.env.CAPTURE_FPS || '1'),
             quality: 80,
         },
-        ai: {
-            enabled: !!(process.env.GOOGLE_API_KEY || process.env.OPENAI_API_KEY),
-            provider: process.env.GOOGLE_API_KEY ? 'gemini' : 'openai',
+        // Vision AI (Gemini) - high volume frame analysis
+        vision: {
+            enabled: !!process.env.GOOGLE_API_KEY,
             googleApiKey: process.env.GOOGLE_API_KEY || '',
+            model: process.env.VISION_MODEL || 'gemini-2.0-flash',
+            analyzeEveryNthFrame: parseInt(process.env.VISION_ANALYZE_EVERY_N || '60', 10),
+        },
+        // Reasoning AI (GPT-5) - low volume deep thinking
+        reasoning: {
+            enabled: !!process.env.OPENAI_API_KEY,
             openaiApiKey: process.env.OPENAI_API_KEY || '',
-            model: process.env.AI_MODEL || (process.env.GOOGLE_API_KEY ? 'gemini-2.0-flash' : 'gpt-5'),
-            analyzeEveryNthFrame: parseInt(process.env.AI_ANALYZE_EVERY_N || '60', 10), // Default: analyze every 60th frame (1/min)
-            maxTokens: parseInt(process.env.AI_MAX_TOKENS || '1000', 10),
+            model: process.env.REASONING_MODEL || 'gpt-4o',
+            maxTokens: parseInt(process.env.REASONING_MAX_TOKENS || '2000', 10),
+        },
+        // Scheduled reports
+        reporting: {
+            enabled: !!(process.env.OPENAI_API_KEY && process.env.DISCORD_WEBHOOK),
+            times: (process.env.REPORT_TIMES || '0600,2000').split(','),
+            timezone: process.env.REPORT_TIMEZONE || 'America/New_York',
+            discordWebhook: process.env.DISCORD_WEBHOOK || '',
         },
         server: {
             healthPort: parseInt(process.env.HEALTH_PORT || '8080', 10),
