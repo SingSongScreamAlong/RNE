@@ -39,7 +39,7 @@ export class WatcherEngine {
 
     private async initAI(): Promise<void> {
         if (!this.config.ai.enabled) {
-            logger.info('AI analysis disabled (no OPENAI_API_KEY)');
+            logger.info('AI analysis disabled (no GOOGLE_API_KEY or OPENAI_API_KEY)');
             return;
         }
 
@@ -52,6 +52,8 @@ export class WatcherEngine {
         // Initialize AI analyzer
         this.aiAnalyzer = new AIAnalyzer(
             {
+                provider: this.config.ai.provider,
+                googleApiKey: this.config.ai.googleApiKey,
                 openaiApiKey: this.config.ai.openaiApiKey,
                 model: this.config.ai.model,
                 analyzeEveryNthFrame: this.config.ai.analyzeEveryNthFrame,
@@ -60,7 +62,7 @@ export class WatcherEngine {
             this.knowledgeStore
         );
 
-        logger.info(`🧠 AI Engine ready: ${this.config.ai.model}, analyzing every ${this.config.ai.analyzeEveryNthFrame} frames`);
+        logger.info(`🧠 AI Engine ready: ${this.config.ai.provider}/${this.config.ai.model}, analyzing every ${this.config.ai.analyzeEveryNthFrame} frames`);
     }
 
     async start(): Promise<void> {

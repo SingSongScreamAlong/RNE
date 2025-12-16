@@ -1,7 +1,8 @@
 // =====================================================================
-// RNE AI Analysis Engine - Frame Analyzer (GPT-5 Vision)
+// RNE AI Analysis Engine - Frame Analyzer (Gemini + OpenAI)
 // =====================================================================
 
+import { GoogleGenerativeAI, Part } from '@google/generative-ai';
 import OpenAI from 'openai';
 import { createLogger } from './logger.js';
 import { KnowledgeStore, RacingInsight } from './knowledge-store.js';
@@ -57,12 +58,17 @@ export interface FrameAnalysis {
 
     // Confidence score
     confidence: number;
+
+    // Provider used
+    provider: 'gemini' | 'openai';
 }
 
 export interface AnalyzerConfig {
-    openaiApiKey: string;
+    provider: 'gemini' | 'openai';
+    googleApiKey?: string;
+    openaiApiKey?: string;
     model: string;
-    analyzeEveryNthFrame: number; // Analyze every Nth frame (cost control)
+    analyzeEveryNthFrame: number;
     maxTokens: number;
 }
 
@@ -73,7 +79,7 @@ CONTEXT:
 - Category: {category}
 - Timestamp: {frameTime}s
 
-ANALYZE AND RESPOND IN JSON:
+ANALYZE AND RESPOND IN JSON ONLY (no markdown, no explanation):
 {
   "sceneType": "race|qualifying|practice|pitlane|replay|interview|analysis|other",
   "visiblePositions": [{"position": 1, "driver": "name or null", "team": "name or null", "gap": "gap or null"}],
@@ -104,7 +110,8 @@ Be precise. If you can't determine something, use null. Focus on actionable raci
 
 export class AIAnalyzer {
     private config: AnalyzerConfig;
-    private openai: OpenAI;
+    private gemini: GoogleGenerativeAI | null = null;
+    private openai: OpenAI | null = null;
     private knowledgeStore: KnowledgeStore;
     private frameCounter = 0;
     private totalAnalyzed = 0;
@@ -113,9 +120,15 @@ export class AIAnalyzer {
     constructor(config: AnalyzerConfig, knowledgeStore: KnowledgeStore) {
         this.config = config;
         this.knowledgeStore = knowledgeStore;
-        this.openai = new OpenAI({ apiKey: config.openaiApiKey });
 
-        logger.info(`AI Analyzer initialized with model: ${config.model}`);
+        if (config.provider === 'gemini' && config.googleApiKey) {
+            this.gemini = new GoogleGenerativeAI(config.googleApiKey);
+            logger.info(`🧠 AI Analyzer: Gemini (${config.model})`);
+        } else if (config.provider === 'openai' && config.openaiApiKey) {
+            this.openai = new OpenAI({ apiKey: config.openaiApiKey });
+            logger.info(`🧠 AI Analyzer: OpenAI (${config.model})`);
+        }
+
         logger.info(`Analyzing every ${config.analyzeEveryNthFrame} frames`);
     }
 
@@ -139,33 +152,18 @@ export class AIAnalyzer {
                 .replace('{category}', category)
                 .replace('{frameTime}', frameTime.toString());
 
-            const response = await this.openai.chat.completions.create({
-                model: this.config.model,
-                max_tokens: this.config.maxTokens,
-                messages: [
-                    {
-                        role: 'user',
-                        content: [
-                            { type: 'text', text: prompt },
-                            {
-                                type: 'image_url',
-                                image_url: {
-                                    url: `data:image/jpeg;base64,${screenshotBase64}`,
-                                    detail: 'high',
-                                },
-                            },
-                        ],
-                    },
-                ],
-            });
+            let rawAnalysis: string;
 
-            const rawAnalysis = response.choices[0]?.message?.content || '';
+            if (this.config.provider === 'gemini' && this.gemini) {
+                rawAnalysis = await this.analyzeWithGemini(prompt, screenshotBase64);
+            } else if (this.config.provider === 'openai' && this.openai) {
+                rawAnalysis = await this.analyzeWithOpenAI(prompt, screenshotBase64);
+            } else {
+                logger.warn('No AI provider configured');
+                return null;
+            }
+
             this.totalAnalyzed++;
-
-            // Estimate cost (rough approximation)
-            const inputTokens = response.usage?.prompt_tokens || 0;
-            const outputTokens = response.usage?.completion_tokens || 0;
-            this.totalCost += (inputTokens * 0.00001) + (outputTokens * 0.00003); // GPT-5 pricing estimate
 
             // Parse JSON response
             const jsonMatch = rawAnalysis.match(/\{[\s\S]*\}/);
@@ -190,12 +188,13 @@ export class AIAnalyzer {
                 insights: parsed.insights || [],
                 rawAnalysis,
                 confidence: parsed.confidence || 0.5,
+                provider: this.config.provider,
             };
 
             // Store insights in knowledge base
             await this.storeInsights(analysis);
 
-            logger.debug(`Analyzed frame at ${frameTime}s: ${analysis.sceneType}, ${analysis.insights.length} insights`);
+            logger.debug(`🧠 [${this.config.provider}] Analyzed: ${analysis.sceneType}, ${analysis.insights.length} insights`);
 
             return analysis;
 
@@ -205,12 +204,60 @@ export class AIAnalyzer {
         }
     }
 
+    private async analyzeWithGemini(prompt: string, imageBase64: string): Promise<string> {
+        const model = this.gemini!.getGenerativeModel({ model: this.config.model });
+
+        const imagePart: Part = {
+            inlineData: {
+                mimeType: 'image/jpeg',
+                data: imageBase64,
+            },
+        };
+
+        const result = await model.generateContent([prompt, imagePart]);
+        const response = await result.response;
+
+        // Estimate cost (Gemini 2.0 Flash is very cheap)
+        this.totalCost += 0.0025; // ~$0.0025 per image
+
+        return response.text();
+    }
+
+    private async analyzeWithOpenAI(prompt: string, imageBase64: string): Promise<string> {
+        const response = await this.openai!.chat.completions.create({
+            model: this.config.model,
+            max_tokens: this.config.maxTokens,
+            messages: [
+                {
+                    role: 'user',
+                    content: [
+                        { type: 'text', text: prompt },
+                        {
+                            type: 'image_url',
+                            image_url: {
+                                url: `data:image/jpeg;base64,${imageBase64}`,
+                                detail: 'high',
+                            },
+                        },
+                    ],
+                },
+            ],
+        });
+
+        // Estimate cost
+        const inputTokens = response.usage?.prompt_tokens || 0;
+        const outputTokens = response.usage?.completion_tokens || 0;
+        this.totalCost += (inputTokens * 0.00001) + (outputTokens * 0.00003);
+
+        return response.choices[0]?.message?.content || '';
+    }
+
     private async storeInsights(analysis: FrameAnalysis): Promise<void> {
         // Extract and store valuable insights
         for (const insight of analysis.insights) {
             if (insight && insight.length > 10) {
                 const racingInsight: RacingInsight = {
-                    id: `${analysis.videoId}-${analysis.frameTime}`,
+                    id: `${analysis.videoId}-${analysis.frameTime}-${Date.now()}`,
                     timestamp: analysis.timestamp,
                     category: analysis.category,
                     source: {
@@ -282,6 +329,8 @@ export class AIAnalyzer {
 
     getStats() {
         return {
+            provider: this.config.provider,
+            model: this.config.model,
             framesProcessed: this.frameCounter,
             framesAnalyzed: this.totalAnalyzed,
             estimatedCost: this.totalCost.toFixed(4),

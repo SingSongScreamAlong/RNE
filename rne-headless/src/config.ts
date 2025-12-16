@@ -35,6 +35,8 @@ export interface Config {
     };
     ai: {
         enabled: boolean;
+        provider: 'gemini' | 'openai';
+        googleApiKey: string;
         openaiApiKey: string;
         model: string;
         analyzeEveryNthFrame: number;
@@ -103,10 +105,12 @@ export function loadConfig(): Config {
             quality: 80,
         },
         ai: {
-            enabled: !!process.env.OPENAI_API_KEY,
+            enabled: !!(process.env.GOOGLE_API_KEY || process.env.OPENAI_API_KEY),
+            provider: process.env.GOOGLE_API_KEY ? 'gemini' : 'openai',
+            googleApiKey: process.env.GOOGLE_API_KEY || '',
             openaiApiKey: process.env.OPENAI_API_KEY || '',
-            model: process.env.AI_MODEL || 'gpt-5',
-            analyzeEveryNthFrame: parseInt(process.env.AI_ANALYZE_EVERY_N || '10', 10), // Analyze every 10th frame
+            model: process.env.AI_MODEL || (process.env.GOOGLE_API_KEY ? 'gemini-2.0-flash' : 'gpt-5'),
+            analyzeEveryNthFrame: parseInt(process.env.AI_ANALYZE_EVERY_N || '60', 10), // Default: analyze every 60th frame (1/min)
             maxTokens: parseInt(process.env.AI_MAX_TOKENS || '1000', 10),
         },
         server: {
