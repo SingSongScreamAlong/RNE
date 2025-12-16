@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Test</title>
+  <style>
+    body { background: #1a1a1a; color: white; padding: 20px; font-family: sans-serif; }
+    button { padding: 20px 40px; font-size: 20px; cursor: pointer; }
+    #log { margin-top: 20px; padding: 10px; background: #333; min-height: 200px; }
+  </style>
+</head>
+<body>
+  <h1>Click Test</h1>
+  <button id="test-btn">Click Me</button>
+  <div id="log"></div>
+  
+  <script>
+    const log = document.getElementById('log');
+    const btn = document.getElementById('test-btn');
+    
+    function addLog(msg) {
+      log.innerHTML += new Date().toLocaleTimeString() + ': ' + msg + '<br>';
+      console.log(msg);
+    }
+    
+    addLog('Script loaded');
+    addLog('window.watcher: ' + (typeof window.watcher !== 'undefined'));
+    
+    document.addEventListener('click', (e) => {
+      addLog('Click on: ' + e.target.tagName + ' ' + e.target.id);
+    });
+    
+    btn.addEventListener('click', async () => {
+      addLog('Button clicked!');
+      if (window.watcher) {
+        addLog('Calling watcher.start()...');
+        try {
+          await window.watcher.start();
+          addLog('Start completed!');
+        } catch (err) {
+          addLog('Error: ' + err);
+        }
+      }
+    });
+  </script>
+</body>
+</html>

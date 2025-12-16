@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RNE Watcher Agent</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="app">
+    <header class="titlebar">
+      <div class="titlebar-drag">
+        <span class="titlebar-title">🔴🟢🔵 Watcher Agent</span>
+      </div>
+      <div class="titlebar-controls">
+        <button class="titlebar-btn" id="btn-minimize">−</button>
+        <button class="titlebar-btn close" id="btn-close">×</button>
+      </div>
+    </header>
+
+    <div class="main-layout">
+      <aside class="sidebar">
+        <section class="panel status-panel">
+          <h2>STATUS</h2>
+          <div class="status-grid">
+            <div class="status-item">
+              <span class="label">State</span>
+              <span class="value" id="status-state">Idle</span>
+            </div>
+            <div class="status-item">
+              <span class="label">Connection</span>
+              <span class="value" id="status-connection">Disconnected</span>
+            </div>
+            <div class="status-item">
+              <span class="label">Active Streams</span>
+              <span class="value" id="status-streams">0</span>
+            </div>
+            <div class="status-item">
+              <span class="label">Uptime</span>
+              <span class="value" id="status-uptime">--:--:--</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel controls-panel">
+          <h2>CONTROLS</h2>
+          <div class="controls-grid">
+            <button class="btn btn-primary" id="btn-start">▶ Start</button>
+            <button class="btn btn-danger" id="btn-stop" disabled>■ Stop</button>
+            <button class="btn btn-secondary" id="btn-pause" disabled>⏸ Pause</button>
+          </div>
+        </section>
+
+        <section class="panel stats-panel">
+          <h2>STATISTICS</h2>
+          <div class="stats-grid compact">
+            <div class="stat-item">
+              <span class="stat-value" id="stat-frames">0</span>
+              <span class="stat-label">Frames</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-value" id="stat-observations">0</span>
+              <span class="stat-label">Sent</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-value" id="stat-events">0</span>
+              <span class="stat-label">Events</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-value" id="stat-fps">0.0</span>
+              <span class="stat-label">FPS</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel logs-panel">
+          <h2>LOGS</h2>
+          <div class="logs-container" id="logs-container">
+            <div class="log-entry info">
+              <span class="log-time">--:--:--</span>
+              <span class="log-message">Watcher Agent ready</span>
+            </div>
+          </div>
+        </section>
+      </aside>
+
+      <main class="video-area">
+        <div class="video-header">
+          <h2 id="video-title">No Stream Active</h2>
+          <span class="video-status" id="video-status">Waiting...</span>
+        </div>
+        <div class="video-container" id="video-container">
+          <div class="video-placeholder">
+            <div class="placeholder-icon">📺</div>
+            <p>Click Start to begin watching</p>
+            <p class="placeholder-subtitle">Video will appear here</p>
+          </div>
+        </div>
+        <div class="video-info">
+          <span id="video-time">0:00 / 0:00</span>
+          <span id="video-id"></span>
+        </div>
+      </main>
+    </div>
+
+    <footer class="footer">
+      <span class="version">v1.0.0</span>
+      <span class="schedule-status">Schedule: Not configured</span>
+    </footer>
+  </div>
+
+  <script type="module" src="./renderer.ts"></script>
+</body>
+</html>
