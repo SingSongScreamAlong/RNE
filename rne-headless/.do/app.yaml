@@ -6,10 +6,10 @@ region: nyc
 
 services:
   - name: rne-headless
-    dockerfile_path: Dockerfile
+    dockerfile_path: rne-headless/Dockerfile
     source_dir: /
     github:
-      repo: SingSongScreamAlong/sog-kneeboard
+      repo: SingSongScreamAlong/RNE
       branch: main
       deploy_on_push: true
     
