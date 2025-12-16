@@ -127,7 +127,7 @@ export function loadConfig(): Config {
         reasoning: {
             enabled: !!process.env.OPENAI_API_KEY,
             openaiApiKey: process.env.OPENAI_API_KEY || '',
-            model: process.env.REASONING_MODEL || 'gpt-4o',
+            model: process.env.REASONING_MODEL || 'gpt-5',
             maxTokens: parseInt(process.env.REASONING_MAX_TOKENS || '2000', 10),
         },
         // Scheduled reports
