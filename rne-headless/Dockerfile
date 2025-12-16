@@ -4,7 +4,7 @@
 
 FROM node:20-slim
 
-# Install Chromium dependencies
+# Install Chromium dependencies and curl for healthcheck
 RUN apt-get update && apt-get install -y \
     chromium \
     fonts-liberation \
@@ -23,6 +23,7 @@ RUN apt-get update && apt-get install -y \
     libxdamage1 \
     libxrandr2 \
     xdg-utils \
+    curl \
     --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
@@ -35,21 +36,28 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
-RUN npm ci --only=production
+# Install ALL dependencies (including devDependencies for building)
+RUN npm ci
 
-# Copy built files
-COPY dist/ ./dist/
+# Copy source files
+COPY tsconfig.json ./
+COPY src/ ./src/
+
+# Build TypeScript
+RUN npm run build
+
+# Remove devDependencies after build
+RUN npm prune --production
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1
 
 # Expose health check port
 EXPOSE 8080
 
 # Run as non-root user
-RUN groupadd -r rne && useradd -r -g rne rne
+RUN groupadd -r rne && useradd -r -g rne rne && chown -R rne:rne /app
 USER rne
 
 # Start the service
