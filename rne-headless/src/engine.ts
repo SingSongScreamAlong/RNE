@@ -83,12 +83,16 @@ export class WatcherEngine {
                         reportTimes: this.config.reporting.times,
                         timezone: this.config.reporting.timezone,
                         discordWebhook: this.config.reporting.discordWebhook,
+                        email: this.config.reporting.email,
                     },
                     this.reasoningEngine,
                     this.knowledgeStore
                 );
                 this.reportScheduler.start();
                 logger.info(`📊 Reports: ${this.config.reporting.times.join(', ')} ${this.config.reporting.timezone}`);
+                if (this.config.reporting.email) {
+                    logger.info(`📧 Email: ${this.config.reporting.email.from} → ${this.config.reporting.email.to}`);
+                }
             }
         } else {
             logger.info('🧠 Reasoning Engine disabled (no OPENAI_API_KEY)');

@@ -53,6 +53,12 @@ export interface Config {
         times: string[]; // ['0600', '2000']
         timezone: string;
         discordWebhook: string;
+        email?: {
+            from: string;
+            to: string;
+            smtpUser: string;
+            smtpPass: string;
+        };
     };
     server: {
         healthPort: number;
@@ -132,10 +138,16 @@ export function loadConfig(): Config {
         },
         // Scheduled reports
         reporting: {
-            enabled: !!(process.env.OPENAI_API_KEY && process.env.DISCORD_WEBHOOK),
+            enabled: !!(process.env.OPENAI_API_KEY && (process.env.DISCORD_WEBHOOK || process.env.EMAIL_TO)),
             times: (process.env.REPORT_TIMES || '0600,2000').split(','),
             timezone: process.env.REPORT_TIMEZONE || 'America/New_York',
             discordWebhook: process.env.DISCORD_WEBHOOK || '',
+            email: process.env.EMAIL_TO ? {
+                from: process.env.EMAIL_FROM || '',
+                to: process.env.EMAIL_TO || '',
+                smtpUser: process.env.EMAIL_SMTP_USER || process.env.EMAIL_FROM || '',
+                smtpPass: process.env.EMAIL_SMTP_PASS || '',
+            } : undefined,
         },
         server: {
             healthPort: parseInt(process.env.HEALTH_PORT || '8080', 10),
