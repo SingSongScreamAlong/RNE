@@ -80,7 +80,7 @@ Respond in JSON:
         try {
             const response = await this.openai.chat.completions.create({
                 model: this.config.model,
-                max_tokens: this.config.maxTokens,
+                max_completion_tokens: this.config.maxTokens,
                 messages: [{ role: 'user', content: prompt }],
             });
 
@@ -131,7 +131,7 @@ Provide actionable coaching guidance. Respond in JSON:
         try {
             const response = await this.openai.chat.completions.create({
                 model: this.config.model,
-                max_tokens: this.config.maxTokens,
+                max_completion_tokens: this.config.maxTokens,
                 messages: [{ role: 'user', content: prompt }],
             });
 
@@ -170,7 +170,7 @@ Provide a clear, actionable answer. Be specific and reference relevant racing co
         try {
             const response = await this.openai.chat.completions.create({
                 model: this.config.model,
-                max_tokens: this.config.maxTokens,
+                max_completion_tokens: this.config.maxTokens,
                 messages: [{ role: 'user', content: prompt }],
             });
 
@@ -203,7 +203,7 @@ List 3-5 key patterns you observe. Be specific and actionable.`;
         try {
             const response = await this.openai.chat.completions.create({
                 model: this.config.model,
-                max_tokens: 500,
+                max_completion_tokens: 500,
                 messages: [{ role: 'user', content: prompt }],
             });
 
