@@ -132,6 +132,14 @@ export class WatcherEngine {
         if (this.reasoningEngine) {
             logger.info(`🧠 Reasoning: ACTIVE (GPT ${this.config.reasoning.model})`);
         }
+
+        // Send test report on startup if configured
+        if (this.reportScheduler && process.env.SEND_TEST_REPORT === 'true') {
+            logger.info('📧 Sending test report...');
+            setTimeout(() => {
+                this.reportScheduler?.generateAndSendReport();
+            }, 5000); // Wait 5 seconds for everything to initialize
+        }
     }
 
     private getNextSource(): Source {
