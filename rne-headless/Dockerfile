@@ -49,6 +49,9 @@ RUN npm run build
 # Remove devDependencies after build
 RUN npm prune --production
 
+# Create data directory for knowledge store
+RUN mkdir -p /app/data
+
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1
